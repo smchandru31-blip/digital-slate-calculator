@@ -24,7 +24,7 @@ public:
             cfg.freq_write = 40000000;       // 40 MHz write clock
             cfg.freq_read  = 16000000;
             cfg.spi_3wire  = false;
-            cfg.use_dma    = true;
+            cfg.dma_channel = SPI_DMA_CH_AUTO; // Auto DMA channel
             cfg.pin_sclk   = 14;             // TFT SCK
             cfg.pin_mosi   = 13;             // TFT MOSI
             cfg.pin_miso   = 12;             // TFT MISO

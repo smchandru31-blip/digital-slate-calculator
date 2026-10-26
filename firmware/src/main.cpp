@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include "esp_chip_info.h"
+#include "esp_heap_caps.h"
 #include "CYD_Display_Config.hpp"
 
 // Hardware Pin Definitions for Auxiliary Peripherals
@@ -11,7 +13,6 @@
 static LGFX_CYD tft;
 
 // State tracking
-static uint32_t last_status_update = 0;
 static uint32_t touch_count = 0;
 static bool target_hit[5] = {false, false, false, false, false};
 
@@ -49,24 +50,24 @@ void printSystemInfo() {
     // Chip Model & Features
     esp_chip_info_t chip_info;
     esp_chip_info(&chip_info);
-    Serial.printf("Chip Model         : ESP32 (rev %d)\n", chip_info.revision);
-    Serial.printf("Cores              : %d @ %d MHz\n", chip_info.cores, getCpuFrequencyMhz());
-    Serial.printf("Flash Size         : %u KB (%s mode)\n", 
-                  ESP.getFlashChipSize() / 1024,
+    Serial.printf("Chip Model         : %s (rev %d)\n", ESP.getChipModel(), chip_info.revision);
+    Serial.printf("Cores              : %d @ %u MHz\n", chip_info.cores, (unsigned)getCpuFrequencyMhz());
+    Serial.printf("Flash Size         : %lu KB (%s mode)\n", 
+                  (unsigned long)(ESP.getFlashChipSize() / 1024),
                   (ESP.getFlashChipMode() == 0 ? "QIO" : "DIO"));
-    Serial.printf("Flash Speed        : %u MHz\n", ESP.getFlashChipSpeed() / 1000000);
+    Serial.printf("Flash Speed        : %lu MHz\n", (unsigned long)(ESP.getFlashChipSpeed() / 1000000));
     
     // PSRAM
     bool psram = psramFound();
     Serial.printf("PSRAM Detected     : %s\n", psram ? "YES" : "NO (Expected on CYD 2.8)");
     if (psram) {
-        Serial.printf("PSRAM Size         : %u KB\n", ESP.getPsramSize() / 1024);
+        Serial.printf("PSRAM Size         : %lu KB\n", (unsigned long)(ESP.getPsramSize() / 1024));
     }
     
     // Heap Memory
-    Serial.printf("Total Free Heap    : %u bytes\n", ESP.getFreeHeap());
-    Serial.printf("Min Free Heap Ever : %u bytes\n", ESP.getMinFreeHeap());
-    Serial.printf("Internal Free Heap : %u bytes\n", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    Serial.printf("Total Free Heap    : %lu bytes\n", (unsigned long)ESP.getFreeHeap());
+    Serial.printf("Min Free Heap Ever : %lu bytes\n", (unsigned long)ESP.getMinFreeHeap());
+    Serial.printf("Internal Free Heap : %lu bytes\n", (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     Serial.println("--------------------------------------------------");
 }
 
@@ -164,8 +165,8 @@ void loop() {
         tft.getTouchRaw(&tp, 1);
 
         // Print to serial
-        Serial.printf("[TOUCH #%u] Screen:(%3d, %3d) Raw:(%4d, %4d) Z:%3d\n",
-                      touch_count, x, y, tp.x, tp.y, tp.size);
+        Serial.printf("[TOUCH #%lu] Screen:(%3d, %3d) Raw:(%4d, %4d) Z:%3d\n",
+                      (unsigned long)touch_count, x, y, tp.x, tp.y, tp.size);
 
         // Draw stylus ink point
         tft.fillCircle(x, y, 2, TFT_ORANGE);
