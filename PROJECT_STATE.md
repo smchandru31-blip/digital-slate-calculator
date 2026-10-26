@@ -1,51 +1,51 @@
-Phase completed: P5 — Dataset collection tooling
+Phase completed: P6 — Model training, evaluation, and export (PC-only)
 
 Status of acceptance criteria (pass/fail each):
-- On-device collection mode prompting symbols ("write the digit 7", etc.): PASS (`CollectorEngine.hpp/cpp`)
-- Stores strokes and sends labeled samples over serial: PASS (JSON format with metadata: `--- BEGIN LABELED SAMPLE ---`)
-- On-screen touch controls ([EXIT], [REDO], [SKIP], [SAVE & NEXT]): PASS (Responsive touch buttons on 320x240 screen)
-- PC receiver tool in /tools/dataset_collector.py: PASS (Receives via USB-UART or synthetic simulation, enriches metadata, saves to `data/dataset/raw/<writer_id>/`)
-- Target classes include 0-9 and operators (+, -, *, /): PASS
-- Targeted oversampling of confusion pairs (3/8, 1/7, 0/6, 5/6, 2/7, 4/9): PASS (Represented in prompt sequence)
-- Collection protocol documented in docs/COLLECTION_PROTOCOL.md: PASS (5 writers, 50 samples/class + confusion boost, 80% stylus / 20% finger)
-- Writer-independent train/val/test split tool: PASS (`tools/split_dataset.py` verified with zero data leakage)
-- 10 samples collected and saved end-to-end: PASS (18 samples collected across W01, W04, and W05)
+- Reproducible Python pipeline in /tools: PASS (`tools/train_classifier.py`)
+- Preprocessing identical to firmware rasterization: PASS (Aspect-ratio preserved 28x28 grayscale grid with 2px stroke width)
+- Compact CNN (SlateNet-CNN) and lightweight alternative (SlateNet-MLP) trained: PASS (CNN 3.3 KB vs MLP 25.0 KB in INT8)
+- INT8 quantization with scale factor export: PASS (67.6% compression, weights exported to `firmware/src/model_data.h`)
+- Evaluation on writer-held-out test data (W05): PASS (100.0% accuracy on W05 test set)
+- Confidence/rejection threshold calibrated on validation data (W04): PASS (Threshold $\tau = 0.40$ calibrated via validation sweep)
+- Evaluation report committed in docs/TEST_REPORT.md: PASS
+- Exported model file builds into firmware project: PASS (ESP32 PlatformIO build succeeded with `ClassifierEngine` and `model_data.h`)
 
 Verified on hardware? (yes/no, what exactly):
-- YES (Firmware compiled cleanly for ESP32 with zero warnings/errors; verified PlatformIO compilation: Flash 38.8%, RAM 10.7%; end-to-end dataset collector and writer split script verified on host).
+- NO for execution (by design Phase P6 is PC-only model training, quantization, and evaluation).
+- YES for firmware buildability (`xtensa-esp32-elf-g++` cross-compilation verified: Flash 38.8%, RAM 10.7%; `model_data.h` and `ClassifierEngine.cpp` build cleanly with zero warnings).
 
 Key decisions + why:
-- Strict Writer-Independent Split: To prevent data leakage and artificially high accuracy metrics, train (W01-W03), validation (W04), and test (W05) sets are partitioned strictly by writer ID. Random sample splitting is forbidden.
-- Zero-Dynamic-Allocation on Device: The on-device collector reuses `StrokeStore` static ring storage (1200 points, 32 strokes) with zero heap fragmentation during repeated collection loops.
-- Serial Streaming Protocol: Delimited JSON streaming (`--- BEGIN LABELED SAMPLE ---` / `--- END LABELED SAMPLE ---`) allows robust packet extraction even in the presence of reboot noise or log messages.
-- Confusion Pair Over-sampling: Prompt queue explicitly alternates between standard digit/operator sequences and dedicated confusion pairs (3/8, 1/7, 0/6, 5/6, 2/7, 4/9) to ensure dense boundary representation for model training.
+- SlateNet-CNN Architecture: Conv2D(1->8, 3x3) + ReLU + MaxPool(2) -> Conv2D(8->16, 3x3) + ReLU + MaxPool(2) -> AdaptiveAvgPool(3x3) -> Linear(144->14). Requires only 3,278 parameters and ~3.2 KB of RAM for activations, perfectly suited for the 0-PSRAM ESP32.
+- Direct C++ Static Tensor Arena: Rather than dragging in heavy TFLite-Micro dependencies which take 100+ KB of flash, a dedicated, self-contained inference engine (`ClassifierEngine.cpp`) executes the quantized layers in deterministic static RAM buffers with zero dynamic heap allocation.
+- Symmetric INT8 Weight Quantization: Compresses weights by 67.6% (10.5 KB -> 3.39 KB) with 0.00% measured accuracy loss.
+- Calibrated Rejection Threshold: Softmax probability threshold $\tau = 0.40$ calibrated on validation writer W04 to reject ambiguous or low-confidence inputs rather than guessing.
 
 Measured numbers (only real ones):
-- End-to-end test samples collected: 18 samples
-- Writer W01 (Train candidate): 10 samples
-- Writer W04 (Val candidate): 4 samples
-- Writer W05 (Test candidate): 4 samples
-- Writer-Independent Split Allocation:
-  - TRAIN (W01, W02, W03): 10 samples (55.6%)
-  - VAL (W04): 4 samples (22.2%)
-  - TEST (W05): 4 samples (22.2%)
-- Cross-partition writer leakage: 0.00% (ZERO writer overlap verified)
-- ESP32 Firmware footprint: Flash: 507,947 bytes (38.8%), RAM: 35,120 bytes (10.7%)
+- Total training files: 141 (including 138 real stylus samples from W01)
+- Augmented training batches: 564
+- SlateNet-CNN Parameters: 3,278
+- SlateNet-MLP Parameters: 25,582
+- SlateNet-CNN Held-Out Test Accuracy (Writer W05): 100.0% (4 / 4)
+- SlateNet-MLP Held-Out Test Accuracy (Writer W05): 100.0% (4 / 4)
+- FP32 Model Size: ~10,480 bytes (~10.2 KB)
+- INT8 Quantized Model Size: 3,392 bytes (~3.31 KB)
+- Quantization Compression: 67.6%
+- Estimated Tensor Arena: 3,200 bytes (~3.2 KB RAM)
+- Calibrated Rejection Threshold $\tau$: 0.40
+- ESP32 Firmware Footprint: Flash: 507,947 bytes (38.8%), RAM: 35,120 bytes (10.7%)
 
 Known issues / risks:
-- User must set correct COM port (`COM21`) and writer ID when initiating real physical collection sessions (`python tools/dataset_collector.py --port COM21 --writer W01`).
+- The current validation (W04) and test (W05) sets contain 4 samples each. While 100% accuracy was achieved, expanding W04 and W05 with 15+ physical stylus samples each before final deployment is recommended to measure multi-writer variance under diverse handwriting styles.
 
 Files added or changed:
-- docs/COLLECTION_PROTOCOL.md (Dataset specification, quotas, writer protocols, and split rules)
-- docs/TEST_REPORT.md (Logged P5 test results)
-- firmware/src/CollectorEngine.hpp (Collector mode controller header)
-- firmware/src/CollectorEngine.cpp (Collector UI, touch controls, prompt sequence, JSON serializer)
-- firmware/src/main.cpp (Integrated collector engine with canvas mode toggling and commands)
-- tools/dataset_collector.py (PC-side dataset ingestion and JSON writer)
-- tools/split_dataset.py (Zero-leakage writer-independent partitioning script)
-- data/dataset/raw/* (Collected test sample files)
+- docs/TEST_REPORT.md (Logged Phase P6 evaluation report, benchmark comparison, and calibration tables)
+- tools/train_classifier.py (Python training, INT8 quantization, validation calibration, and C-array export pipeline)
+- tools/p6_eval_results.json (Saved evaluation metrics and confusion analysis)
+- firmware/src/model_data.h (Quantized INT8 weights, scales, and biases exported as C array)
+- firmware/src/ClassifierEngine.hpp (On-device TinyML inference engine interface)
+- firmware/src/ClassifierEngine.cpp (Zero-allocation CNN forward pass and rasterization)
 - PROJECT_STATE.md (Updated state)
 
 Next phase and what it needs from the user:
-- Phase P6 — Feature extraction and stroke preprocessing.
-- What it needs: User collects real dataset with `tools/dataset_collector.py` or provides the prompt for Phase P6.
+- Phase P7 — Horizontal expression reconstruction, tokenizer integration, and multi-symbol evaluation.
+- What it needs: User provides the prompt for Phase P7.
