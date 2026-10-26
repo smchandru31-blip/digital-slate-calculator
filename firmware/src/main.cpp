@@ -5,6 +5,8 @@
 #include "StrokeStore.hpp"
 #include "CanvasEngine.hpp"
 
+#include "CollectorEngine.hpp"
+
 // Hardware Pin Definitions for Auxiliary Peripherals
 #define RGB_LED_RED   4
 #define RGB_LED_GREEN 16
@@ -14,6 +16,7 @@
 static LGFX_CYD tft;
 static StrokeStore strokeStore;
 static CanvasEngine canvas(tft, strokeStore);
+static DigitalSlate::CollectorEngine collector(tft, strokeStore);
 
 void setup() {
     Serial.begin(115200);
@@ -28,7 +31,7 @@ void setup() {
     digitalWrite(RGB_LED_BLUE, HIGH);
 
     Serial.println(F("=================================================="));
-    Serial.println(F("  DIGITAL SLATE - P2 HANDWRITING CANVAS & ENGINE  "));
+    Serial.println(F("  DIGITAL SLATE - P5 DATASET COLLECTION FIRMWARE  "));
     Serial.println(F("=================================================="));
     Serial.printf("Free Internal Heap: %lu bytes\n", (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
@@ -39,10 +42,12 @@ void setup() {
 
     // Initialize handwriting canvas UI
     canvas.init();
+    collector.init();
 
-    Serial.println(F("[CANVAS] Ready for stylus handwriting."));
-    Serial.println(F("[COMMANDS] Send 'd' or 'e' over Serial to dump strokes as JSON."));
-    Serial.println(F("[COMMANDS] Send 'u' to Undo, 'c' to Clear."));
+    Serial.println(F("[CANVAS] Ready for handwriting."));
+    Serial.println(F("[COMMANDS] 'm' = Toggle Collection Mode"));
+    Serial.println(F("[COMMANDS] 's'/'n' = Save & Next, 'r' = Redo, 'k' = Skip"));
+    Serial.println(F("[COMMANDS] 'd' = Dump JSON, 'u' = Undo, 'c' = Clear"));
 }
 
 void loop() {
@@ -57,17 +62,74 @@ void loop() {
     }
 
     // Process touch and ink rendering
-    canvas.update();
+    if (collector.isCollecting()) {
+        int32_t tx = 0, ty = 0;
+        if (tft.getTouch(&tx, &ty)) {
+            if (!collector.handleTouch((int16_t)tx, (int16_t)ty)) {
+                // Free canvas writing area
+                canvas.update();
+            }
+        } else {
+            canvas.update();
+        }
+    } else {
+        canvas.update();
+    }
 
     // Process Serial commands
     if (Serial.available() > 0) {
-        char cmd = (char)Serial.read();
+        String cmdStr = Serial.readStringUntil('\n');
+        cmdStr.trim();
+        if (cmdStr.length() == 0) return;
+
+        char cmd = cmdStr.charAt(0);
         switch (cmd) {
+            case 'm':
+            case 'M':
+                if (collector.isCollecting()) {
+                    collector.stopCollection();
+                    canvas.init();
+                } else {
+                    collector.startCollection();
+                }
+                break;
+            case 's':
+            case 'S':
+            case 'n':
+            case 'N':
+                if (collector.isCollecting()) {
+                    collector.saveAndNext();
+                }
+                break;
+            case 'r':
+            case 'R':
+                if (collector.isCollecting()) {
+                    collector.redoCurrent();
+                } else {
+                    canvas.clear();
+                }
+                break;
+            case 'k':
+            case 'K':
+                if (collector.isCollecting()) {
+                    collector.skipPrompt();
+                }
+                break;
+            case 'w':
+            case 'W':
+                if (cmdStr.length() > 2) {
+                    collector.setWriterId(cmdStr.substring(2).c_str());
+                    Serial.printf("[COLLECTOR] Writer set to: %s\n", collector.getMetadata().writerId);
+                }
+                break;
             case 'd':
-            case 'e':
             case 'D':
-            case 'E':
-                canvas.dumpStrokesJSON();
+                if (cmdStr.length() > 2 && (cmdStr.charAt(1) == ' ' || cmdStr.charAt(1) == '=')) {
+                    collector.setInputDevice(cmdStr.substring(2).c_str());
+                    Serial.printf("[COLLECTOR] Device set to: %s\n", collector.getMetadata().inputDevice);
+                } else {
+                    canvas.dumpStrokesJSON();
+                }
                 break;
             case 'u':
             case 'U':

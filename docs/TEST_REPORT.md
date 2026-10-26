@@ -9,6 +9,7 @@
 | 2026-10-26 | P2 | Canvas Engine & Stroke Store | Physical Board | PASS | Full-screen canvas, immediate 2px ink, pen-down/up segmentation, stroke store (1200 pts / 32 strokes), Undo, Clear, and JSON dump verified over USB-UART. |
 | 2026-10-26 | P3 | Calculation Engine & Recursive Descent Parser | Host (PC) & ESP32 | PASS | 35/35 unit tests passed. Precedence, associativity, brackets, decimals, unary minus, divide-by-zero rejection, missing operand rejection, and overflow handling validated. |
 | 2026-10-26 | P4 | Stroke Geometry & Trigger-Line Detection | Host (PC) & ESP32 | PASS | 32/32 labeled stroke files evaluated. False-trigger rate: 0.00%, Miss rate: 0.00%, Ambiguity recognition rate: 100.00%. Zero silent guesses on ambiguous cases. |
+| 2026-10-26 | P5 | Dataset Collection Tooling & Partitioning | Host (PC) & ESP32 | PASS | End-to-end dataset collector tested (18 samples across W01, W04, W05). Zero leakage writer-independent split tool verified (Train: 55.6%, Val: 22.2%, Test: 22.2%). Collection protocol and schemas documented. |
 
 ## Numeric Type & Precision Limits
 - **Representation**: IEEE 754 64-bit double-precision floating point (`double`).

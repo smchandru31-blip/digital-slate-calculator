@@ -1,0 +1,54 @@
+{
+  "format": "digital_slate_v1",
+  "type": "labeled_sample",
+  "label": "0",
+  "prompt": "0",
+  "sample_index": 1,
+  "writer_id": "W01",
+  "input_device": "stylus",
+  "timestamp_ms": 1793033693046,
+  "stroke_count": 1,
+  "total_points": 5,
+  "strokes": [
+    {
+      "stroke_index": 0,
+      "point_count": 5,
+      "points": [
+        {
+          "x": 60,
+          "y": 50,
+          "t": 1793033692891
+        },
+        {
+          "x": 45,
+          "y": 75,
+          "t": 1793033692906
+        },
+        {
+          "x": 60,
+          "y": 100,
+          "t": 1793033692921
+        },
+        {
+          "x": 75,
+          "y": 75,
+          "t": 1793033692936
+        },
+        {
+          "x": 60,
+          "y": 50,
+          "t": 1793033692951
+        }
+      ]
+    }
+  ],
+  "bbox": {
+    "x_min": 45,
+    "y_min": 50,
+    "x_max": 75,
+    "y_max": 100,
+    "width": 31,
+    "height": 51
+  },
+  "saved_at_iso": "2026-10-26T16:54:52.895132Z"
+}
