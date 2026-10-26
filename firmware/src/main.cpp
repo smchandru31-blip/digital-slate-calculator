@@ -7,6 +7,7 @@
 #include "CollectorEngine.hpp"
 #include "ClassifierEngine.hpp"
 #include "ExpressionEngine.hpp"
+#include "VerticalEngine.hpp"
 
 // Hardware Pin Definitions for Auxiliary Peripherals
 #define RGB_LED_RED   4
@@ -20,6 +21,7 @@ static CanvasEngine canvas(tft, strokeStore);
 static DigitalSlate::CollectorEngine collector(tft, strokeStore);
 static DigitalSlate::ClassifierEngine classifier;
 static DigitalSlate::ExpressionEngine expressionEngine;
+static DigitalSlate::VerticalEngine verticalEngine;
 
 // Non-blocking FreeRTOS inference architecture
 // Core 1 runs touch polling and immediate ink rendering at ~120 Hz.
@@ -28,7 +30,9 @@ static TaskHandle_t s_inferenceTaskHandle = NULL;
 static volatile bool s_inferenceRequested = false;
 static volatile bool s_inferenceBusy = false;
 static volatile bool s_hasNewResult = false;
+static volatile bool s_lastWasVertical = false;
 static DigitalSlate::ExpressionResult s_lastExprResult;
+static DigitalSlate::VerticalResult s_lastVertResult;
 
 // Background task running on Core 0 (PRO_CPU_NUM)
 static void inferenceTask(void* pvParameters) {
@@ -38,33 +42,66 @@ static void inferenceTask(void* pvParameters) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
         s_inferenceBusy = true;
-        // Run full expression reconstruction on Core 0
-        s_lastExprResult = expressionEngine.processStrokes(strokeStore, classifier);
+
+        // Try vertical column expression reconstruction first
+        DigitalSlate::VerticalResult vertRes = verticalEngine.processStrokes(strokeStore, classifier);
+
+        if (vertRes.status != DigitalSlate::VerticalStatus::NOT_VERTICAL_LAYOUT) {
+            s_lastWasVertical = true;
+            s_lastVertResult = vertRes;
+
+            // Stream real-time vertical telemetry over Serial
+            if (vertRes.status == DigitalSlate::VerticalStatus::VERTICAL_OK) {
+                Serial.printf("[VERTICAL] %s = %s  [Inferred: %s] (Latency: %lu us)\n",
+                              vertRes.reconstructed_expr.c_str(),
+                              vertRes.calc_result.formatted,
+                              vertRes.is_operator_inferred ? "YES" : "NO",
+                              (unsigned long)vertRes.total_latency_us);
+            } else if (vertRes.status == DigitalSlate::VerticalStatus::AMBIGUOUS_OPERATOR) {
+                Serial.printf("[VERTICAL] AMBIGUOUS OPERATOR: %s (Ask user: [+] or [-])\n",
+                              vertRes.diagnostic_reason.c_str());
+            } else if (vertRes.status == DigitalSlate::VerticalStatus::AMBIGUOUS_PLACE_VALUE) {
+                Serial.printf("[VERTICAL] AMBIGUOUS PLACE VALUE: %s (Rejected - not guessed)\n",
+                              vertRes.diagnostic_reason.c_str());
+            } else if (vertRes.status == DigitalSlate::VerticalStatus::AMBIGUOUS_CRAMPED_ROWS) {
+                Serial.printf("[VERTICAL] CRAMPED ROWS: %s (Rejected - not guessed)\n",
+                              vertRes.diagnostic_reason.c_str());
+            } else if (vertRes.status == DigitalSlate::VerticalStatus::WAITING_FOR_TRIGGER) {
+                Serial.printf("[VERTICAL] Stacked operands detected: waiting for trigger underline\n");
+            } else if (vertRes.status == DigitalSlate::VerticalStatus::AMBIGUOUS_TRIGGER) {
+                Serial.printf("[VERTICAL] Trigger underline is ambiguous or irregular\n");
+            }
+        } else {
+            // Fall back to horizontal expression reconstruction
+            s_lastWasVertical = false;
+            s_lastExprResult = expressionEngine.processStrokes(strokeStore, classifier);
+
+            // Stream real-time horizontal telemetry over Serial
+            if (s_lastExprResult.status == DigitalSlate::ExpressionStatus::EXPRESSION_RECOGNIZED) {
+                Serial.printf("[CALCULATOR] Expression: \"%s\" = %s (Latency: %lu us)\n",
+                              s_lastExprResult.reconstructed_expr.c_str(),
+                              s_lastExprResult.calc_result.formatted,
+                              (unsigned long)s_lastExprResult.total_latency_us);
+            } else if (s_lastExprResult.status == DigitalSlate::ExpressionStatus::UNCERTAIN_SYMBOLS) {
+                Serial.printf("[CALCULATOR] UNCERTAIN (%d symbols): \"%s\" = %s (Latency: %lu us)\n",
+                              (int)s_lastExprResult.uncertain_symbol_count,
+                              s_lastExprResult.reconstructed_expr.c_str(),
+                              s_lastExprResult.calc_result.formatted,
+                              (unsigned long)s_lastExprResult.total_latency_us);
+            } else if (s_lastExprResult.status == DigitalSlate::ExpressionStatus::WAITING_FOR_TRIGGER) {
+                Serial.printf("[CALCULATOR] In progress: \"%s\" (waiting for trigger line)\n",
+                              s_lastExprResult.reconstructed_expr.c_str());
+            } else if (s_lastExprResult.status == DigitalSlate::ExpressionStatus::AMBIGUOUS_TRIGGER) {
+                Serial.println(F("[CALCULATOR] Ambiguous trigger line gesture detected."));
+            } else if (s_lastExprResult.status == DigitalSlate::ExpressionStatus::SYNTAX_ERROR) {
+                Serial.printf("[CALCULATOR] Syntax error in expression \"%s\": %s\n",
+                              s_lastExprResult.reconstructed_expr.c_str(),
+                              s_lastExprResult.calc_result.getErrorMessage());
+            }
+        }
+
         s_inferenceBusy = false;
         s_hasNewResult = true;
-
-        // Stream real-time telemetry over Serial
-        if (s_lastExprResult.status == DigitalSlate::ExpressionStatus::EXPRESSION_RECOGNIZED) {
-            Serial.printf("[CALCULATOR] Expression: \"%s\" = %s (Latency: %lu us)\n",
-                          s_lastExprResult.reconstructed_expr.c_str(),
-                          s_lastExprResult.calc_result.formatted,
-                          (unsigned long)s_lastExprResult.total_latency_us);
-        } else if (s_lastExprResult.status == DigitalSlate::ExpressionStatus::UNCERTAIN_SYMBOLS) {
-            Serial.printf("[CALCULATOR] UNCERTAIN (%d symbols): \"%s\" = %s (Latency: %lu us)\n",
-                          (int)s_lastExprResult.uncertain_symbol_count,
-                          s_lastExprResult.reconstructed_expr.c_str(),
-                          s_lastExprResult.calc_result.formatted,
-                          (unsigned long)s_lastExprResult.total_latency_us);
-        } else if (s_lastExprResult.status == DigitalSlate::ExpressionStatus::WAITING_FOR_TRIGGER) {
-            Serial.printf("[CALCULATOR] In progress: \"%s\" (waiting for trigger line)\n",
-                          s_lastExprResult.reconstructed_expr.c_str());
-        } else if (s_lastExprResult.status == DigitalSlate::ExpressionStatus::AMBIGUOUS_TRIGGER) {
-            Serial.println(F("[CALCULATOR] Ambiguous trigger line gesture detected."));
-        } else if (s_lastExprResult.status == DigitalSlate::ExpressionStatus::SYNTAX_ERROR) {
-            Serial.printf("[CALCULATOR] Syntax error in expression \"%s\": %s\n",
-                          s_lastExprResult.reconstructed_expr.c_str(),
-                          s_lastExprResult.calc_result.getErrorMessage());
-        }
     }
 }
 
@@ -75,32 +112,33 @@ void triggerAsyncInference() {
     }
 }
 
-void displayExpressionResult(const DigitalSlate::ExpressionResult& res) {
-    // Top banner styling (y: 2..22)
-    uint16_t bannerColor = 0x2104; // Dark slate
-    if (res.status == DigitalSlate::ExpressionStatus::EXPRESSION_RECOGNIZED) {
-        bannerColor = 0x03E0; // Green
-    } else if (res.status == DigitalSlate::ExpressionStatus::UNCERTAIN_SYMBOLS) {
-        bannerColor = 0xFD20; // Amber
-    } else if (res.status == DigitalSlate::ExpressionStatus::AMBIGUOUS_TRIGGER ||
-               res.status == DigitalSlate::ExpressionStatus::SYNTAX_ERROR) {
-        bannerColor = 0xF800; // Red
-    }
+void displayResultBanner() {
+    if (s_lastWasVertical) {
+        const auto& res = s_lastVertResult;
+        uint16_t bannerColor = 0x2104; // Dark slate
+        if (res.status == DigitalSlate::VerticalStatus::VERTICAL_OK) {
+            bannerColor = 0x03E0; // Green
+        } else if (res.status == DigitalSlate::VerticalStatus::AMBIGUOUS_OPERATOR) {
+            bannerColor = 0x001F; // Blue (Prompt user)
+        } else if (res.status == DigitalSlate::VerticalStatus::AMBIGUOUS_PLACE_VALUE ||
+                   res.status == DigitalSlate::VerticalStatus::AMBIGUOUS_CRAMPED_ROWS ||
+                   res.status == DigitalSlate::VerticalStatus::AMBIGUOUS_TRIGGER) {
+            bannerColor = 0xF800; // Red (Rejected layout)
+        }
 
-    tft.fillRect(60, 2, 200, 20, bannerColor);
-    tft.setTextColor(TFT_WHITE, bannerColor);
-    tft.setTextSize(1);
-    tft.setCursor(66, 6);
+        tft.fillRect(60, 2, 200, 20, bannerColor);
+        tft.setTextColor(TFT_WHITE, bannerColor);
+        tft.setTextSize(1);
+        tft.setCursor(66, 6);
 
-    if (res.status == DigitalSlate::ExpressionStatus::EXPRESSION_RECOGNIZED) {
-        tft.printf("%s = %s  (%lums)",
-                   res.reconstructed_expr.c_str(),
-                   res.calc_result.formatted,
-                   (unsigned long)(res.total_latency_us / 1000));
+        if (res.status == DigitalSlate::VerticalStatus::VERTICAL_OK) {
+            tft.printf("%s = %s  (%lums)",
+                       res.reconstructed_expr.c_str(),
+                       res.calc_result.formatted,
+                       (unsigned long)(res.total_latency_us / 1000));
 
-        // Draw bold result beneath the trigger line if coordinates exist
-        if (res.trigger_stroke_index >= 0) {
-            int16_t ans_x = res.trigger_bbox.xMin + 10;
+            // Draw bold result beneath the trigger line
+            int16_t ans_x = res.trigger_bbox.xMax - 30;
             int16_t ans_y = res.trigger_bbox.yMax + 8;
             if (ans_y < 210) {
                 tft.setTextSize(2);
@@ -109,24 +147,70 @@ void displayExpressionResult(const DigitalSlate::ExpressionResult& res) {
                 tft.printf("= %s", res.calc_result.formatted);
                 tft.setTextSize(1);
             }
+        } else if (res.status == DigitalSlate::VerticalStatus::AMBIGUOUS_OPERATOR) {
+            tft.print("Confirm Op: [+] or [-]?");
+        } else if (res.status == DigitalSlate::VerticalStatus::AMBIGUOUS_PLACE_VALUE) {
+            tft.print("Misaligned digits! Check 1s");
+        } else if (res.status == DigitalSlate::VerticalStatus::AMBIGUOUS_CRAMPED_ROWS) {
+            tft.print("Cramped rows! Leave space");
+        } else if (res.status == DigitalSlate::VerticalStatus::WAITING_FOR_TRIGGER) {
+            tft.print("Vertical: draw _ below");
+        } else if (res.status == DigitalSlate::VerticalStatus::AMBIGUOUS_TRIGGER) {
+            tft.print("Ambiguous underline");
         }
-    } else if (res.status == DigitalSlate::ExpressionStatus::UNCERTAIN_SYMBOLS) {
-        if (res.first_uncertain_index >= 0 && (size_t)res.first_uncertain_index < res.symbols.size()) {
-            const auto& sym = res.symbols[res.first_uncertain_index];
-            tft.printf("? '%c' vs '%c' (Tap to fix) = %s",
-                       sym.label, sym.top2_label,
-                       res.calc_result.isOk() ? res.calc_result.formatted : "?");
+    } else {
+        const auto& res = s_lastExprResult;
+        uint16_t bannerColor = 0x2104; // Dark slate
+        if (res.status == DigitalSlate::ExpressionStatus::EXPRESSION_RECOGNIZED) {
+            bannerColor = 0x03E0; // Green
+        } else if (res.status == DigitalSlate::ExpressionStatus::UNCERTAIN_SYMBOLS) {
+            bannerColor = 0xFD20; // Amber
+        } else if (res.status == DigitalSlate::ExpressionStatus::AMBIGUOUS_TRIGGER ||
+                   res.status == DigitalSlate::ExpressionStatus::SYNTAX_ERROR) {
+            bannerColor = 0xF800; // Red
+        }
 
-            // Highlight uncertain symbol with an amber outline box
-            tft.drawRect(sym.bbox.xMin - 2, sym.bbox.yMin - 2,
-                         sym.bbox.width() + 4, sym.bbox.height() + 4, 0xFD20);
+        tft.fillRect(60, 2, 200, 20, bannerColor);
+        tft.setTextColor(TFT_WHITE, bannerColor);
+        tft.setTextSize(1);
+        tft.setCursor(66, 6);
+
+        if (res.status == DigitalSlate::ExpressionStatus::EXPRESSION_RECOGNIZED) {
+            tft.printf("%s = %s  (%lums)",
+                       res.reconstructed_expr.c_str(),
+                       res.calc_result.formatted,
+                       (unsigned long)(res.total_latency_us / 1000));
+
+            // Draw bold result beneath the trigger line if coordinates exist
+            if (res.trigger_stroke_index >= 0) {
+                int16_t ans_x = res.trigger_bbox.xMin + 10;
+                int16_t ans_y = res.trigger_bbox.yMax + 8;
+                if (ans_y < 210) {
+                    tft.setTextSize(2);
+                    tft.setTextColor(0x03E0, TFT_WHITE);
+                    tft.setCursor(ans_x, ans_y);
+                    tft.printf("= %s", res.calc_result.formatted);
+                    tft.setTextSize(1);
+                }
+            }
+        } else if (res.status == DigitalSlate::ExpressionStatus::UNCERTAIN_SYMBOLS) {
+            if (res.first_uncertain_index >= 0 && (size_t)res.first_uncertain_index < res.symbols.size()) {
+                const auto& sym = res.symbols[res.first_uncertain_index];
+                tft.printf("? '%c' vs '%c' (Tap to fix) = %s",
+                           sym.label, sym.top2_label,
+                           res.calc_result.isOk() ? res.calc_result.formatted : "?");
+
+                // Highlight uncertain symbol with an amber outline box
+                tft.drawRect(sym.bbox.xMin - 2, sym.bbox.yMin - 2,
+                             sym.bbox.width() + 4, sym.bbox.height() + 4, 0xFD20);
+            }
+        } else if (res.status == DigitalSlate::ExpressionStatus::WAITING_FOR_TRIGGER) {
+            tft.printf("Expr: %s (draw _ below)", res.reconstructed_expr.c_str());
+        } else if (res.status == DigitalSlate::ExpressionStatus::AMBIGUOUS_TRIGGER) {
+            tft.print("Ambiguous line: Redraw line");
+        } else if (res.status == DigitalSlate::ExpressionStatus::SYNTAX_ERROR) {
+            tft.printf("Error: %s", res.calc_result.getErrorMessage());
         }
-    } else if (res.status == DigitalSlate::ExpressionStatus::WAITING_FOR_TRIGGER) {
-        tft.printf("Expr: %s (draw _ below)", res.reconstructed_expr.c_str());
-    } else if (res.status == DigitalSlate::ExpressionStatus::AMBIGUOUS_TRIGGER) {
-        tft.print("Ambiguous line: Redraw line");
-    } else if (res.status == DigitalSlate::ExpressionStatus::SYNTAX_ERROR) {
-        tft.printf("Error: %s", res.calc_result.getErrorMessage());
     }
 }
 
@@ -215,18 +299,18 @@ void loop() {
     // Check if Core 0 produced a new inference result
     if (s_hasNewResult) {
         s_hasNewResult = false;
-        displayExpressionResult(s_lastExprResult);
+        displayResultBanner();
     }
 
     // Check if user tapped an uncertain symbol to toggle between candidates
-    if (s_lastExprResult.uncertain_symbol_count > 0 && !collector.isCollecting()) {
+    if (!s_lastWasVertical && s_lastExprResult.uncertain_symbol_count > 0 && !collector.isCollecting()) {
         int32_t tx = 0, ty = 0;
         if (tft.getTouch(&tx, &ty)) {
             for (size_t i = 0; i < s_lastExprResult.symbols.size(); ++i) {
                 if (!s_lastExprResult.symbols[i].is_confident &&
                     s_lastExprResult.symbols[i].bbox.contains((int16_t)tx, (int16_t)ty)) {
                     expressionEngine.toggleSymbolCandidate(s_lastExprResult, i);
-                    displayExpressionResult(s_lastExprResult);
+                    displayResultBanner();
                     delay(200); // Debounce toggle tap
                     break;
                 }

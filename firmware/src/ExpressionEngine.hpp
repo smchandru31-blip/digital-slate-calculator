@@ -83,16 +83,16 @@ public:
      */
     bool toggleSymbolCandidate(ExpressionResult& result, size_t symbol_index);
 
-private:
-    float _confidence_threshold;
-    float _margin_threshold;
-
-    // Helper: Segments content strokes into symbol clusters
+    // Segments content strokes into symbol clusters (reusable by vertical engine)
     std::vector<RecognizedSymbol> segmentAndRecognizeSymbols(
         const std::vector<std::vector<Point2D>>& content_strokes,
         const std::vector<size_t>& original_indices,
         ClassifierEngine& classifier
     );
+
+private:
+    float _confidence_threshold;
+    float _margin_threshold;
 
     // Helper: Geometry-based operator detection for 1, 2, and 3 stroke patterns
     bool detectGeometricOperator(

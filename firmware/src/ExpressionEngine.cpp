@@ -43,6 +43,16 @@ bool ExpressionEngine::isParenthesis(const std::vector<Point2D>& stroke, const S
 
     if (stroke.size() < 4) return false;
 
+    // Check for horizontal top bar (digit '7' feature, not parenthesis)
+    if (stroke.size() >= 6) {
+        size_t test_k = std::min((size_t)10, stroke.size() / 3);
+        int16_t init_dx = std::abs(stroke[test_k].x - stroke[0].x);
+        int16_t init_dy = std::abs(stroke[test_k].y - stroke[0].y);
+        if (init_dx >= 8 && init_dy <= 3) {
+            return false; // Top horizontal flag of '7'
+        }
+    }
+
     // Chord line from start point to end point
     Point2D p_start = stroke.front();
     Point2D p_end   = stroke.back();
@@ -209,11 +219,12 @@ bool ExpressionEngine::detectGeometricOperatorPair(
             return false;
         }
 
-        // 2. Plus sign '+': one horizontal stroke and one vertical stroke crossing centrally
+        // 2. Plus sign '+': two straight strokes (one horizontal, one vertical) crossing centrally
         bool v1 = (ang1 >= 60.0f && ang1 <= 120.0f);
         bool v2 = (ang2 >= 60.0f && ang2 <= 120.0f);
+        bool both_straight = (m1.straightness > 0.65f && m2.straightness > 0.65f);
 
-        if (((h1 && v2) || (h2 && v1)) && combined_ar >= 0.45f && combined_ar <= 2.2f) {
+        if (both_straight && ((h1 && v2) || (h2 && v1)) && combined_ar >= 0.45f && combined_ar <= 2.2f) {
             // Ensure intersection is central (horizontal stroke center is near vertical stroke X)
             int16_t h_center_x = h1 ? m1.bbox.centerX() : m2.bbox.centerX();
             int16_t v_min_x    = h1 ? m2.bbox.xMin : m1.bbox.xMin;
@@ -241,11 +252,11 @@ bool ExpressionEngine::detectGeometricOperatorPair(
             }
         }
 
-        // 3. Multiply sign 'x' or '*': both diagonal strokes
+        // 3. Multiply sign 'x' or '*': two straight diagonal strokes
         bool d1 = (ang1 >= 25.0f && ang1 <= 68.0f) || (ang1 >= 112.0f && ang1 <= 155.0f);
         bool d2 = (ang2 >= 25.0f && ang2 <= 68.0f) || (ang2 >= 112.0f && ang2 <= 155.0f);
 
-        if (d1 && d2 && combined_ar >= 0.45f && combined_ar <= 2.2f) {
+        if (both_straight && d1 && d2 && combined_ar >= 0.45f && combined_ar <= 2.2f) {
             out_sym.label = '*';
             out_sym.top2_label = '+';
             out_sym.confidence = 1.0f;
@@ -350,6 +361,27 @@ std::vector<RecognizedSymbol> ExpressionEngine::segmentAndRecognizeSymbols(
 
         RecognizedSymbol single_sym;
         if (detectGeometricOperator(content_strokes[i], metrics[i], single_sym)) {
+            // If the operator is a minus sign '-', ensure it is not merely the top bar of a multi-stroke digit (like '5' or '7')
+            if (single_sym.label == '-') {
+                bool has_stroke_beneath = false;
+                for (size_t k = 0; k < stroke_count; ++k) {
+                    if (k == i || consumed[k]) continue;
+                    int16_t ov_x = std::min(metrics[i].bbox.xMax, metrics[k].bbox.xMax) -
+                                   std::max(metrics[i].bbox.xMin, metrics[k].bbox.xMin);
+                    int16_t min_w = std::min(metrics[i].bbox.width(), metrics[k].bbox.width());
+                    if (ov_x > (int16_t)(0.35f * min_w) &&
+                        metrics[k].bbox.yMin <= metrics[i].bbox.yMax + 6 &&
+                        metrics[k].bbox.yMax >= metrics[i].bbox.yMax + 12) {
+                        has_stroke_beneath = true;
+                        break;
+                    }
+                }
+                if (has_stroke_beneath) {
+                    // Belongs to a multi-stroke digit below; defer to Step 4
+                    continue;
+                }
+            }
+
             single_sym.stroke_indices = {original_indices[i]};
             symbols.push_back(single_sym);
             consumed[i] = true;
@@ -375,9 +407,16 @@ std::vector<RecognizedSymbol> ExpressionEngine::segmentAndRecognizeSymbols(
 
             int16_t center_dist_x = std::abs(metrics[i].bbox.centerX() - metrics[j].bbox.centerX());
             int16_t center_dist_y = std::abs(metrics[i].bbox.centerY() - metrics[j].bbox.centerY());
+            int16_t overlap_y = std::min(metrics[i].bbox.yMax, metrics[j].bbox.yMax) -
+                                std::max(metrics[i].bbox.yMin, metrics[j].bbox.yMin);
+            int16_t min_h = std::min(metrics[i].bbox.height(), metrics[j].bbox.height());
+
+            // Multi-stroke digits (4, 5) either intersect or share vertical extent with close centers.
+            // Vertically stacked digits across rows have centers separated vertically (center_dist_y >= 26px).
+            bool y_proximity = intersects ? (center_dist_y < 25) : (overlap_y >= (int16_t)(0.25f * min_h) && center_dist_y <= 21);
 
             if ((intersects || (overlap_x > (int16_t)(0.35f * min_w))) &&
-                center_dist_x < 28 && center_dist_y < 45) {
+                center_dist_x < 28 && y_proximity) {
 
                 // Merge into multi-stroke cluster
                 StrokeStore cluster_store;

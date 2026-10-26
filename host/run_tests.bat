@@ -74,5 +74,20 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo.
-echo [ALL HOST TEST SUITES PASSED SUCCESSFULLY]
+echo =========================================================================
+echo [5/5] Building and running Vertical (Column) Expression Reconstruction tests...
+echo =========================================================================
+"%GXX%" -static -std=c++17 -Wall -Wextra -O2 -I "%REPO_ROOT%\firmware\src" "%SCRIPT_DIR%test_vertical.cpp" "%REPO_ROOT%\firmware\src\VerticalEngine.cpp" "%REPO_ROOT%\firmware\src\ExpressionEngine.cpp" "%REPO_ROOT%\firmware\src\ClassifierEngine.cpp" "%REPO_ROOT%\firmware\src\GeometryEngine.cpp" "%REPO_ROOT%\firmware\src\CalcEngine.cpp" "%REPO_ROOT%\firmware\src\StrokeStore.cpp" -o "%SCRIPT_DIR%test_vertical.exe"
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] VerticalEngine compilation failed.
+    exit /b %ERRORLEVEL%
+)
+"%SCRIPT_DIR%test_vertical.exe" "%REPO_ROOT%\data\p9_vertical"
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] VerticalEngine evaluation failed.
+    exit /b %ERRORLEVEL%
+)
+
+echo.
+echo [ALL HOST TEST SUITES (1 TO 5) PASSED SUCCESSFULLY]
 exit /b 0

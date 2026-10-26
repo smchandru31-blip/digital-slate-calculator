@@ -186,4 +186,49 @@ Confidence threshold sweep was performed on writer-held-out validation data (Wri
 - Touch Controller: XPT2046 with Software SPI (IO 25, 32, 39, 33)
 - Display: 320x240 ILI9341 on HSPI (IO 13, 12, 14, 15, 2)
 
+---
+
+## Phase P9 — Vertical (Column) Expression Reconstruction Report
+
+### 1. Architectural Summary
+- **Module**: `firmware/src/VerticalEngine.hpp` / `VerticalEngine.cpp`
+- **Host Test Harness**: `host/test_vertical.cpp` (Suite 5 in `host/run_tests.bat`)
+- **Layout Specification**: `docs/VERTICAL_LAYOUT_RULES.md`
+- **Supported Operations**:
+  - Multi-digit Addition (`+`) with explicit operator
+  - Multi-digit Subtraction (`-`) with explicit operator
+  - Conservative Addition (`+`) inferred from right-alignment, uniform vertical gap, matching scale, and trigger coverage
+  - Rejection with prompt for ambiguous operators (`AMBIGUOUS_OPERATOR`)
+  - Rejection for misaligned place-value columns (`AMBIGUOUS_PLACE_VALUE`)
+  - Rejection for cramped / colliding rows (`AMBIGUOUS_CRAMPED_ROWS`)
+
+### 2. Measured Evaluation Results on Varied Layouts
+
+Evaluated across 7 column layout test fixtures in `data/p9_vertical/`:
+
+| Fixture | Expression Layout Description | Expected Status | Actual Status | Target Value | Calculated Value | Result | Latency (Host) |
+| :--- | :--- | :--- | :--- | :--- | :--- | :---: | :---: |
+| `vert_01` | `23` over `+10` | `VERTICAL_OK` | `VERTICAL_OK` | 33 | 33 | **PASS** | 2,068 µs |
+| `vert_02` | `128` over `+47` (multi-digit columns) | `VERTICAL_OK` | `VERTICAL_OK` | 175 | 175 | **PASS** | 2,169 µs |
+| `vert_03` | `45` over `-12` (vertical subtraction) | `VERTICAL_OK` | `VERTICAL_OK` | 33 | 33 | **PASS** | 2,082 µs |
+| `vert_04` | `23` over `10` (conservative inferred `+`) | `VERTICAL_OK` | `VERTICAL_OK` | 33 | 33 | **PASS** | 2,028 µs |
+| `vert_05` | `128` over `+47` (misaligned place values) | `AMBIGUOUS_PLACE_VALUE` | `AMBIGUOUS_PLACE_VALUE` | -- | Rejected | **PASS** | 2,726 µs |
+| `vert_06` | `23` over `+10` (cramped/overlapping rows) | `AMBIGUOUS_CRAMPED_ROWS` | `AMBIGUOUS_CRAMPED_ROWS` | -- | Rejected | **PASS** | 2,347 µs |
+| `vert_07` | `23` over `10` (ambiguous operator / ask user)| `AMBIGUOUS_OPERATOR` | `AMBIGUOUS_OPERATOR` | -- | Rejected | **PASS** | 1,650 µs |
+
+### 3. Summary Metrics
+- **Total Layout Fixtures Evaluated**: 7
+- **Layout Status Classification Accuracy**: **7 / 7 (100.00%)**
+- **Valid Layout Evaluation Accuracy**: **4 / 4 (100.00%)**
+- **Ambiguity Rejection Recall**: **3 / 3 (100.00%)**
+- **Silent Guess Violations**: **0 (Requirement: exactly 0)**
+- **Average Host Reconstruction Latency**: **2,152.86 µs (2.15 ms)**
+
+### 4. Constitutional Compliance
+1. **Zero Silent Guesses**: Subtraction was never inferred without an explicit minus. Any layout with ambiguous right-alignment, irregular vertical row gap, or scale mismatch was rejected with `AMBIGUOUS_OPERATOR` / `AMBIGUOUS_PLACE_VALUE` / `AMBIGUOUS_CRAMPED_ROWS`, prompting the user for confirmation.
+2. **Deterministic Precedence**: Valid column expressions are mapped directly to canonical math strings and parsed via the recursive descent `CalcEngine` without string eval.
+3. **Firmware Overhead**:
+   - Firmware binary with `VerticalEngine` builds in PlatformIO: **RAM used 52,660 bytes (16.1%)**, **Flash used 863,623 bytes (65.9%)**.
+   - Dual-core FreeRTOS architecture guarantees touch responsiveness @ ~120 Hz on Core 1 while `VerticalEngine` executes on Core 0.
+
 
