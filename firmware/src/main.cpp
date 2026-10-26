@@ -136,12 +136,6 @@ void setup() {
     Serial.println("[DISPLAY] Initializing LovyanGFX controller...");
     tft.init();
     tft.setRotation(1); // Landscape: 320 x 240 (USB on left)
-    
-    // Empirical touch calibration matrix for ESP32-2432S028
-    // Order: TL (3600, 3700), BL (440, 3650), TR (3600, 390), BR (440, 370)
-    uint16_t calData[8] = { 3600, 3700, 440, 3650, 3600, 390, 440, 370 };
-    tft.setTouchCalibrate(calData);
-
     tft.setBrightness(255); // Full backlight
 
     runColorTest();

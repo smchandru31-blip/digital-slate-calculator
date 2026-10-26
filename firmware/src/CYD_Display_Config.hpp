@@ -68,16 +68,16 @@ public:
         }
 
         {
-            // Configure XPT2046 Resistive Touch
+            // Configure XPT2046 Resistive Touch (Official LovyanGFX CYD 2432S028 mapping)
             auto cfg = _touch_instance.config();
             cfg.x_min           = 300;
-            cfg.x_max           = 3800;
-            cfg.y_min           = 200;
-            cfg.y_max           = 3700;
-            cfg.pin_int         = 36;        // Touch IRQ
+            cfg.x_max           = 3900;
+            cfg.y_min           = 3700;      // Inverted Y-axis maps correctly to Landscape X
+            cfg.y_max           = 200;
+            cfg.pin_int         = -1;
             cfg.bus_shared      = false;     // Separate SPI bus from display
             cfg.offset_rotation = 0;
-            cfg.spi_host        = VSPI_HOST; // Use VSPI for touch controller
+            cfg.spi_host        = -1;        // Software SPI for XPT2046 to avoid HSPI conflict
             cfg.freq            = 1000000;   // 1 MHz touch SPI
             cfg.pin_sclk        = 25;        // Touch CLK
             cfg.pin_mosi        = 32;        // Touch MOSI
