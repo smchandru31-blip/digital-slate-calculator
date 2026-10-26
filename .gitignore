@@ -1,0 +1,29 @@
+# Firmware
+.pio/
+build/
+*.bin
+*.elf
+
+# Host & C++ builds
+*.o
+*.obj
+*.exe
+bin/
+out/
+cmake-build-*/
+
+# Python / Tools
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+*.h5
+*.onnx
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
