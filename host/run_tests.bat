@@ -59,5 +59,20 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo.
+echo =========================================================================
+echo [4/4] Building and running Horizontal Expression Reconstruction tests...
+echo =========================================================================
+"%GXX%" -static -std=c++17 -Wall -Wextra -O2 -I "%REPO_ROOT%\firmware\src" "%SCRIPT_DIR%test_expression.cpp" "%REPO_ROOT%\firmware\src\ExpressionEngine.cpp" "%REPO_ROOT%\firmware\src\ClassifierEngine.cpp" "%REPO_ROOT%\firmware\src\GeometryEngine.cpp" "%REPO_ROOT%\firmware\src\CalcEngine.cpp" "%REPO_ROOT%\firmware\src\StrokeStore.cpp" -o "%SCRIPT_DIR%test_expression.exe"
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] ExpressionEngine compilation failed.
+    exit /b %ERRORLEVEL%
+)
+"%SCRIPT_DIR%test_expression.exe" "%REPO_ROOT%\data\p8_expressions"
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] ExpressionEngine evaluation failed.
+    exit /b %ERRORLEVEL%
+)
+
+echo.
 echo [ALL HOST TEST SUITES PASSED SUCCESSFULLY]
 exit /b 0

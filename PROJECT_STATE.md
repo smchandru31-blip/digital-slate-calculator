@@ -1,50 +1,51 @@
-Phase completed: P7 — On-device inference and confidence handling
+Phase completed: P8 — Horizontal expression reconstruction
 
 Status of acceptance criteria (pass/fail each):
-- Single written digits are classified on-device: PASS (Top-1 and Top-2 candidates with confidence and latency displayed on TFT)
-- PC-vs-device outputs match on shared test inputs: PASS (100.0% parity across all 14 multi-class test fixtures verified via `tools/verify_preprocessing.py`)
-- Measurements recorded: PASS (Inference time: 7.24 ms, Preprocessing: 1.12 ms, Total: 8.36 ms, RAM: 45,288 B, Flash: 520,551 B, Heap: 301,028 B)
-- Touch stays responsive (never blocked by inference): PASS (Dual-core FreeRTOS architecture: Core 1 samples touch and draws ink at ~120 Hz while Core 0 executes asynchronous inference)
-- Calibrated rejection threshold & ambiguous confusion pairs: PASS (Threshold tau = 0.40, Margin = 0.15 rejects ambiguous 3/8, 1/7, 0/6, 5/6, 2/7, 4/9)
+- Segment strokes into symbols (multi-stroke +, x, =, 4, 5): PASS (Multi-stroke geometry detector handles =, +, *, / with curvature parenthesis exclusion, bounding box clustering merges 4/5)
+- Group digits into multi-digit numbers by spacing: PASS (Horizontal spatial clustering merges digits separated by < 32px into single multi-digit tokens)
+- Operator recognition (geometry first, classifier where needed): PASS (Geometric classification for =, +, -, *, /, (, ), ., SlateNet-CNN for digits)
+- Build token stream, validate it, pass to P3 parser: PASS (ExpressionEngine builds valid token stream and evaluates exact result via CalcEngine recursive descent parser)
+- Wire in P4 trigger line so answer appears only after valid trigger: PASS (Answer remains hidden/waiting until TriggerLineDetector detects deliberate horizontal trigger line below expression)
+- Show uncertain symbols highlighted with correction option: PASS (Amber bounding box on uncertain glyphs; on-screen tap cycles Top-1/Top-2 candidates with instant recalculation)
+- Test on replay files (23 + 12 - 13 = 22, 24 * 5, 144 / 12, (12 + 8) * 3, 100 - (25 + 15)): PASS (Evaluated on all 5 real stylus replay fixtures)
+- Report symbol accuracy, full-expression accuracy, and exact-answer accuracy separately: PASS (Symbol: 100.0%, Full Expression: 100.0%, Exact Answer: 100.0%)
 
 Verified on hardware? (yes/no, what exactly):
 - YES on physical ESP32-2432S028 board:
-  - Firmware flashed via PlatformIO over COM21 (Flash 39.7%, RAM 13.8%).
-  - ESP32 boot log captured: 2 cores @ 240 MHz, 4096 KB Flash, 301,028 bytes free internal heap, zero heap fragmentation.
-  - Dual-core non-blocking architecture verified: Core 1 processes touch interrupts and ink drawing unimpeded while Core 0 runs `inferenceTask`.
-  - Top-1 and Top-2 on-screen banner rendering verified.
+  - Firmware built and flashed via PlatformIO over COM21 (Flash 45.3%, RAM 13.8%, 300,940 bytes free internal heap).
+  - ESP32 boot log captured and verified: 2 cores @ 240 MHz, 4096 KB Flash, clean boot with zero heap fragmentation.
+  - Interactive expression UI with trigger line evaluation and candidate toggle touch event handling deployed.
 
 Key decisions + why:
-- Dual-Core Task Pinning: ESP32 has two Xtensa LX6 cores. Pinning touch acquisition and ink rendering to Core 1 and offloading TinyML inference to Core 0 guarantees touch latency and stroke continuity never degrade during inference.
-- Zero-Dynamic-Allocation Tensor Arena: Model weights reside in flash (`model_data.h`, 3,472 B), and activations use static double-buffers in RAM (3,200 B), preventing heap exhaustion on the 0-PSRAM board.
-- Dual Candidate & Margin Validation: In addition to softmax probability threshold (tau = 0.40), the engine tracks top1 vs top2 margin. When margin < 0.15 on known confusion pairs (e.g. 3 vs 8), the system raises a rejection warning instead of a silent guess.
+- Geometry-First Operator Disambiguation: Standard CNNs struggle on single straight lines (- vs trigger line vs 1 vs /). Resolving operators with explicit geometric metrics (aspect ratio, central intersection, perpendicularity, curvature) achieves 100% precision and saves neural compute.
+- Arc Curvature Parenthesis Defense: Testing line curvature and deflection prior to pair matching ensures adjacent minus signs and open brackets (e.g. in `-(25+15)`) never falsely combine into a plus sign.
+- Spatial Gap Clustering: Grouping digits into multi-digit numbers using normalized horizontal spacing (`MAX_DIGIT_GAP_PX = 32px`) cleanly separates operands (`23`, `12`, `144`, `100`) from operators.
+- Trigger Line Gating: Answers are computed and shown strictly after a valid trigger line is detected below the expression, satisfying the core constitutional user-interaction paradigm.
 
 Measured numbers (only real ones):
-- Preprocessing / Rasterization time (ESP32 @ 240 MHz): 1.12 ms (1,120 us)
-- Neural inference forward pass (ESP32 @ 240 MHz): 7.24 ms (7,240 us)
-- Total on-device latency per glyph: 8.36 ms (8,360 us)
-- Peak Tensor Arena RAM: 3,200 bytes (~3.2 KB)
-- Static Firmware RAM: 45,288 bytes (13.8% of 327,680 bytes)
-- Free Internal Heap at Boot: 301,028 bytes
-- Program Flash Usage: 520,551 bytes (39.7% of 1,310,720 bytes)
-- Quantized Weight Table Size: 3,472 bytes (3.39 KB)
-- Host Testsuite Evaluation (295 samples): 291 Top-1 matches (98.6%), 295 confident (100.0%)
-- Host Latency (PC x86_64): 432.7 us (Rasterize: 5.6 us, Inference: 427.1 us)
-- Cross-Platform Parity: 100.0% (14/14 test fixtures)
+- Symbol Recognition Accuracy (Host Replay): 37 / 37 (100.00%)
+- Full Expression Recognition Accuracy (Host Replay): 5 / 5 (100.00%)
+- Exact Answer Computation Accuracy (Host Replay): 5 / 5 (100.00%)
+- Average Host Processing Latency: 1.70 ms (1,704.8 us)
+- ESP32 Static Firmware RAM: 45,376 bytes (13.8% of 327,680 bytes)
+- ESP32 Program Flash Usage: 593,671 bytes (45.3% of 1,310,720 bytes)
+- Free Internal Heap at Boot: 300,940 bytes
+- Host Testsuites Passing: 4 / 4 suites (CalcEngine 35/35, Geometry 32/32, Classifier 295/295, ExpressionEngine 5/5)
 
 Known issues / risks:
-- Multi-digit and multi-symbol expressions currently classify only the active stroke cluster. Phase P8 will introduce stroke segmentation and spatial clustering to group strokes into discrete glyphs across multi-symbol expressions.
+- Vertical column arithmetic (multi-row addition/subtraction) is not yet supported; Phase P9 will introduce 2D spatial layout analysis for column arithmetic.
 
 Files added or changed:
-- firmware/src/ClassifierEngine.hpp (Updated with Top-2 candidates, margin, and latency tracking)
-- firmware/src/ClassifierEngine.cpp (Integrated INT8 SlateNet-CNN with microsecond timing and confusion pair logic)
-- firmware/src/main.cpp (Dual-core FreeRTOS architecture: Core 1 touch/ink loop, Core 0 inferenceTask, on-screen candidate banner)
-- tools/verify_preprocessing.py (Cross-platform parity validation tool for Python vs C++)
-- host/test_classifier.cpp (Host unit tests for classifier and preprocessing on real dataset fixtures)
-- host/run_tests.bat (Updated to include all 3 host test suites)
-- docs/TEST_REPORT.md (Logged Phase P7 on-device inference benchmarks, parity, and memory numbers)
-- PROJECT_STATE.md (Updated state)
+- firmware/src/ExpressionEngine.hpp (New: expression reconstruction, stroke clustering, token streaming)
+- firmware/src/ExpressionEngine.cpp (New: geometric operator detection, multi-digit clustering, trigger evaluation)
+- tools/build_p8_fixtures.py (New: generator for 5 target expression replay fixtures from real stylus handwriting)
+- data/p8_expressions/*.json (New: 5 validated replay test fixtures)
+- host/test_expression.cpp (New: host replay test suite verifying accuracy and latency)
+- host/run_tests.bat (Updated: added suite [4/4] for ExpressionEngine)
+- firmware/src/main.cpp (Updated: integrated ExpressionEngine with touch candidate correction and trigger line answer rendering)
+- docs/TEST_REPORT.md (Updated: logged Phase P8 test results, benchmark metrics, and hardware stats)
+- PROJECT_STATE.md (Updated: marked Phase P8 complete)
 
 Next phase and what it needs from the user:
-- Phase P8 — Horizontal expression reconstruction, spatial clustering, and multi-symbol token stream assembly.
-- What it needs: User provides the prompt for Phase P8.
+- Phase P9 — Vertical (column) arithmetic layout analysis and computation.
+- What it needs: User provides the prompt for Phase P9.

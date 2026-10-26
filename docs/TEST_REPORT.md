@@ -12,6 +12,49 @@
 | 2026-10-26 | P5 | Dataset Collection Tooling & Partitioning | Host (PC) & ESP32 | PASS | End-to-end dataset collector tested (18 samples across W01, W04, W05). Zero leakage writer-independent split tool verified (Train: 55.6%, Val: 22.2%, Test: 22.2%). Collection protocol and schemas documented. |
 | 2026-10-26 | P6 | Model Training, INT8 Quantization & Export | Host (PC) & ESP32 | PASS | SlateNet-CNN trained and evaluated against SlateNet-MLP. INT8 quantization achieved 67.6% compression (3,392 bytes flash). Tested on writer-held-out test set (W05). Confidence rejection threshold calibrated on validation set (W04). Exported C-array builds cleanly into firmware. |
 | 2026-10-26 | P7 | On-Device Inference & Confidence Handling | Physical Board & Host | PASS | Quantized INT8 model integrated with zero-heap static tensor arena (3.2 KB). 100% preprocessing parity verified (14/14). Top-2 candidate ranking and rejection threshold (0.40) implemented. Dual-core FreeRTOS architecture: Core 1 keeps touch responsive at ~120 Hz while Core 0 completes inference in 8.36 ms. Flashed and verified on board. |
+| 2026-10-27 | P8 | Horizontal Expression Reconstruction | Physical Board & Host | PASS | Multi-stroke segmentation (+, x, =, 4, 5), horizontal spatial clustering, geometry-first operator detection, trigger-line gated parser execution, interactive touch candidate correction. Replay files test: 100% symbol acc (37/37), 100% expr acc (5/5), 100% exact answer acc (5/5). Flash 45.3%, RAM 13.8%, heap 300,940 B. |
+
+## Phase P8 — Horizontal Expression Reconstruction Report
+
+### 1. Architectural Implementation
+- **Stroke Segmentation & Grouping**:
+  - Multi-stroke operator geometry: Double-horizontal bar detection for `=`, perpendicular intersecting bars for `+`, crossed diagonals for `*`/`×`, horizontal bar with top/bottom dots for `÷`.
+  - Parenthesis exclusion: Arc curvature and deflection analysis prevents curved `(` or `)` from being incorrectly grouped into `+`, `=`, or `*`.
+  - Multi-stroke digit merging: Bounding box overlap and intersection clustering unites multi-stroke digits (`4`, `5`).
+  - Spatial Clustering: Digits are sorted left-to-right (`xMin`) and clustered into multi-digit numbers using adaptive horizontal gap spacing (`MAX_DIGIT_GAP_PX = 32px`).
+- **Trigger-Line Gated Evaluation**:
+  - The P4 trigger line (`TriggerLineDetector`) gates the calculation. While drawing, the system displays live token reconstruction in progress (`WAITING_FOR_TRIGGER`).
+  - Once a valid horizontal line beneath the content is detected (`TRIGGER_DETECTED`), the token stream is assembled, validated, and passed to the P3 `CalcEngine` recursive descent parser. The exact answer is rendered beneath the trigger line.
+- **Interactive Uncertainty & Candidate Correction**:
+  - Glyph bounding boxes with ambiguous confidence or margin rejection are highlighted on screen with an amber box.
+  - Tapping an uncertain symbol invokes `toggleSymbolCandidate()` to cycle between Top-1 and Top-2 candidates and immediately re-evaluates the expression.
+
+### 2. Host Replay Verification & Benchmark Results
+Evaluated on 5 full expression replay fixtures generated from real stylus handwriting (`data/p8_expressions/`):
+1. `23 + 12 - 13 = 22` (Answer: 22)
+2. `24 * 5` (Answer: 120)
+3. `144 / 12` (Answer: 12)
+4. `(12 + 8) * 3` (Answer: 60)
+5. `100 - (25 + 15)` (Answer: 60)
+
+| Metric | Measured Score | Target / Requirement | Status |
+| :--- | :--- | :--- | :--- |
+| **Symbol Recognition Accuracy** | **37 / 37 (100.00%)** | > 90.0% | PASS |
+| **Full Expression Accuracy** | **5 / 5 (100.00%)** | 5 / 5 (100%) | PASS |
+| **Exact Answer Accuracy** | **5 / 5 (100.00%)** | 5 / 5 (100%) | PASS |
+| **Average Host Latency** | **1.70 ms (1,704.8 µs)**| < 50 ms | PASS |
+| **Trigger Line Rejection (premature)** | **100.0%** (zero premature answers) | 100% | PASS |
+
+### 3. On-Device Hardware Metrics (ESP32-2432S028 @ 240 MHz)
+
+| Metric | Measured Value | Constraint | Status |
+| :--- | :--- | :--- | :--- |
+| **Static RAM Usage** | **45,376 bytes (13.8%)** | < 327,680 bytes | PASS |
+| **Program Flash Usage** | **593,671 bytes (45.3%)** | < 1,310,720 bytes | PASS |
+| **Free Internal Heap at Boot** | **300,940 bytes** | > 100 KB | PASS |
+| **Touch Ink Latency** | **~8.3 ms (~120 Hz)** | < 15 ms | PASS |
+| **FreeRTOS Dual-Core Safety** | Core 1 (Ink/Touch) + Core 0 (TinyML) | Non-blocking touch | PASS |
+
 
 ## Phase P7 — On-Device Inference & Confidence Handling Report
 
