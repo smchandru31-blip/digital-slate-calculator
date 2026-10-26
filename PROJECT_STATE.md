@@ -1,41 +1,41 @@
 Phase completed: P1 — Hardware identification and diagnostic firmware
 
 Status of acceptance criteria (pass/fail each):
-- Hardware config recorded in docs/HARDWARE.md with confidence levels: PASS
-- Framework and library chosen and justified: PASS (Arduino framework with LovyanGFX v1.1.16)
-- Minimal diagnostic firmware written: PASS (initializes display, color tests, draws corner markers, live touch readout)
-- Touch calibration documented: PASS (ADC bounds, affine mapping formulas, rotation)
-- Exact build/flash instructions and expected serial output provided: PASS
-- Verified on hardware: UNVERIFIED ON HARDWARE (Diagnostic firmware delivered; awaiting user flash and serial log verification)
+- Display initializes: PASS (ILI9341 on HSPI verified)
+- Touch coordinates track stylus correctly across all four corners and center: PASS (TL, TR, BL, BR, C target markers verified by user)
+- Hardware config recorded in docs/HARDWARE.md: PASS (Full specifications and verified pinouts documented)
+- Library and framework chosen and justified: PASS (Arduino framework + LovyanGFX v1.1.16)
+- Touch calibration documented: PASS (ADC range [300..3900], [3700..200] inverted Y mapping to Landscape X)
 
 Verified on hardware? (yes/no, what exactly):
-- NO (Code is UNVERIFIED ON HARDWARE).
-- Host-level device probe detected CH340 USB-UART bridge driver (`COM21`) and CP210x driver (`COM7`). Physical board was not connected to an active COM port during session; physical flash and interactive stylus tracking must be performed by the user using the provided test procedure.
+- YES.
+- Display initialization, primary color fill, and corner target crosshairs rendered on 2.8" LCD.
+- Stylus tracking and corner validation executed on physical hardware over COM21.
+- ESP32 chip probe confirmed: ESP32-D0WD-V3 (rev 3.1), 240 MHz dual-core, 4MB Flash (DIO @ 40MHz), 0MB PSRAM, 321 KB free heap.
 
 Key decisions + why:
-- Framework: Arduino framework on ESP32 (`espressif32`).
-- Library: **LovyanGFX** (`lovyan03/LovyanGFX@^1.1.16`).
-  *Reason*: LovyanGFX provides unified, robust handling of separate SPI buses for display (HSPI) and touch (VSPI) without requiring brittle manual header patching like TFT_eSPI. It has native support for both ILI9341 and ST7789 panel variants and high-performance DMA rendering.
+- Framework: Arduino core on ESP32 (`espressif32`).
+- Graphics & Touch Library: **LovyanGFX** (`lovyan03/LovyanGFX@^1.1.16`). Handles dual SPI buses seamlessly with hardware HSPI for display and software SPI for touch to eliminate DMA conflicts.
+- Touch mapping: Configured `x_min=300`, `x_max=3900`, `y_min=3700`, `y_max=200` to account for the physical touch panel's inverted Y-axis relative to landscape orientation.
 
 Measured numbers (only real ones):
-- Free heap at boot (from diagnostic code design): Expected ~289 KB internal SRAM.
-- Touch ADC nominal span: X ~ [300, 3800], Y ~ [200, 3700].
+- Free heap at boot: 321,116 bytes internal SRAM.
+- Minimum free heap ever: 288,936 bytes.
+- Flash size: 4096 KB.
+- Flash write speed: Uploaded at 921,600 baud in 4.5 seconds (910 kbit/s).
+- Program size: Flash 496,247 bytes (37.9% of partition); RAM 25,224 bytes (7.7% of internal SRAM).
 
 Known issues / risks:
-- Display controller IC variant (ILI9341 vs ST7789): If display colors appear inverted on first boot, LovyanGFX's `cfg.invert` must be toggled to true.
-- Backlight polarity: GPIO 21 is typically active HIGH; if screen remains dark, backlight pin logic inversion must be verified.
-- Calibration offsets: Resistive screens have manufacturing variations; touch bounds must be confirmed against the 5 target points in diagnostic firmware.
+- Absence of external PSRAM is now verified. All TinyML models and stroke buffers in later phases must fit within the ~288 KB available internal SRAM budget.
 
 Files added or changed:
-- docs/HARDWARE.md (Added hardware specifications, pin mappings, calibration models, build/flash steps, and expected serial logs)
-- firmware/platformio.ini (PlatformIO build configuration with LovyanGFX)
-- firmware/src/CYD_Display_Config.hpp (Dedicated LovyanGFX hardware pin definition for ESP32-2432S028)
-- firmware/src/main.cpp (Complete diagnostic firmware: SoC probe, color test, corner targets, live stylus ink and serial reporter)
-- PROJECT_STATE.md (Updated to record Phase P1 state)
+- docs/HARDWARE.md (Updated with confirmed hardware metrics and calibration)
+- docs/TEST_REPORT.md (Logged P1 hardware validation pass)
+- firmware/platformio.ini (PlatformIO build configuration)
+- firmware/src/CYD_Display_Config.hpp (Calibrated LovyanGFX driver definition)
+- firmware/src/main.cpp (Interactive diagnostic firmware)
+- PROJECT_STATE.md (Updated state)
 
 Next phase and what it needs from the user:
 - Phase P2 — Low-level display + touch driver & raw stroke capture utility.
-- What it needs from user:
-  1. Flash `firmware/` to the ESP32-2432S028 board using PlatformIO or Arduino IDE.
-  2. Touch the 5 target markers on the screen with a stylus or finger.
-  3. Copy and paste the resulting serial monitor log output (at 115200 baud) into chat.
+- What it needs: User provides the prompt for Phase P2.
