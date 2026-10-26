@@ -14,13 +14,35 @@ if %ERRORLEVEL% neq 0 (
     )
 )
 
-echo Building host unit tests...
+echo =========================================================================
+echo [1/2] Building and running Calculation Engine unit tests...
+echo =========================================================================
 "%GXX%" -static -std=c++17 -Wall -Wextra -O2 -I "%REPO_ROOT%\firmware\src" "%SCRIPT_DIR%test_calc_engine.cpp" "%REPO_ROOT%\firmware\src\CalcEngine.cpp" -o "%SCRIPT_DIR%test_calc_engine.exe"
 if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Compilation failed.
+    echo [ERROR] CalcEngine compilation failed.
+    exit /b %ERRORLEVEL%
+)
+"%SCRIPT_DIR%test_calc_engine.exe"
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] CalcEngine tests failed.
     exit /b %ERRORLEVEL%
 )
 
-echo Running unit tests...
-"%SCRIPT_DIR%test_calc_engine.exe"
-exit /b %ERRORLEVEL%
+echo.
+echo =========================================================================
+echo [2/2] Building and running Geometry and Trigger Line evaluation suite...
+echo =========================================================================
+"%GXX%" -static -std=c++17 -Wall -Wextra -O2 -I "%REPO_ROOT%\firmware\src" "%SCRIPT_DIR%test_geometry.cpp" "%REPO_ROOT%\firmware\src\GeometryEngine.cpp" -o "%SCRIPT_DIR%test_geometry.exe"
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] GeometryEngine compilation failed.
+    exit /b %ERRORLEVEL%
+)
+"%SCRIPT_DIR%test_geometry.exe" "%REPO_ROOT%\data\p4_testset"
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] GeometryEngine evaluation failed.
+    exit /b %ERRORLEVEL%
+)
+
+echo.
+echo [ALL HOST TEST SUITES PASSED SUCCESSFULLY]
+exit /b 0

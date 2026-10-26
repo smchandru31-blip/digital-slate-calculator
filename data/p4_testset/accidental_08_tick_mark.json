@@ -1,0 +1,66 @@
+{
+  "format": "digital_slate_v1",
+  "label": "ACCIDENTAL",
+  "description": "Checkmark/tick gesture",
+  "stroke_count": 2,
+  "total_points": 9,
+  "strokes": [
+    {
+      "stroke_index": 0,
+      "point_count": 6,
+      "points": [
+        {
+          "x": 60,
+          "y": 60,
+          "t": 500
+        },
+        {
+          "x": 70,
+          "y": 50,
+          "t": 512
+        },
+        {
+          "x": 85,
+          "y": 55,
+          "t": 524
+        },
+        {
+          "x": 85,
+          "y": 70,
+          "t": 536
+        },
+        {
+          "x": 60,
+          "y": 100,
+          "t": 548
+        },
+        {
+          "x": 85,
+          "y": 100,
+          "t": 560
+        }
+      ]
+    },
+    {
+      "stroke_index": 1,
+      "point_count": 3,
+      "points": [
+        {
+          "x": 70,
+          "y": 120,
+          "t": 652
+        },
+        {
+          "x": 75,
+          "y": 128,
+          "t": 664
+        },
+        {
+          "x": 85,
+          "y": 115,
+          "t": 676
+        }
+      ]
+    }
+  ]
+}

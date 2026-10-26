@@ -1,0 +1,71 @@
+{
+  "format": "digital_slate_v1",
+  "label": "ACCIDENTAL",
+  "description": "Tiny 6px micro-jitter stroke",
+  "stroke_count": 2,
+  "total_points": 10,
+  "strokes": [
+    {
+      "stroke_index": 0,
+      "point_count": 6,
+      "points": [
+        {
+          "x": 50,
+          "y": 70,
+          "t": 500
+        },
+        {
+          "x": 60,
+          "y": 60,
+          "t": 512
+        },
+        {
+          "x": 75,
+          "y": 65,
+          "t": 524
+        },
+        {
+          "x": 75,
+          "y": 80,
+          "t": 536
+        },
+        {
+          "x": 50,
+          "y": 110,
+          "t": 548
+        },
+        {
+          "x": 75,
+          "y": 110,
+          "t": 560
+        }
+      ]
+    },
+    {
+      "stroke_index": 1,
+      "point_count": 4,
+      "points": [
+        {
+          "x": 80,
+          "y": 120,
+          "t": 652
+        },
+        {
+          "x": 82,
+          "y": 120,
+          "t": 664
+        },
+        {
+          "x": 84,
+          "y": 121,
+          "t": 676
+        },
+        {
+          "x": 86,
+          "y": 122,
+          "t": 688
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "format": "digital_slate_v1",
+  "label": "ACCIDENTAL",
+  "description": "Curved scribble beneath digit (low straightness)",
+  "stroke_count": 2,
+  "total_points": 10,
+  "strokes": [
+    {
+      "stroke_index": 0,
+      "point_count": 5,
+      "points": [
+        {
+          "x": 50,
+          "y": 60,
+          "t": 500
+        },
+        {
+          "x": 75,
+          "y": 60,
+          "t": 512
+        },
+        {
+          "x": 62,
+          "y": 85,
+          "t": 524
+        },
+        {
+          "x": 75,
+          "y": 95,
+          "t": 536
+        },
+        {
+          "x": 50,
+          "y": 110,
+          "t": 548
+        }
+      ]
+    },
+    {
+      "stroke_index": 1,
+      "point_count": 5,
+      "points": [
+        {
+          "x": 70,
+          "y": 130,
+          "t": 640
+        },
+        {
+          "x": 90,
+          "y": 120,
+          "t": 652
+        },
+        {
+          "x": 110,
+          "y": 135,
+          "t": 664
+        },
+        {
+          "x": 95,
+          "y": 150,
+          "t": 676
+        },
+        {
+          "x": 80,
+          "y": 140,
+          "t": 688
+        }
+      ]
+    }
+  ]
+}
