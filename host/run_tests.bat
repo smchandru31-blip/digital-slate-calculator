@@ -44,5 +44,20 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo.
+echo =========================================================================
+echo [3/3] Building and running Classifier Engine and Preprocessing tests...
+echo =========================================================================
+"%GXX%" -static -std=c++17 -Wall -Wextra -O2 -I "%REPO_ROOT%\firmware\src" "%SCRIPT_DIR%test_classifier.cpp" "%REPO_ROOT%\firmware\src\ClassifierEngine.cpp" "%REPO_ROOT%\firmware\src\StrokeStore.cpp" -o "%SCRIPT_DIR%test_classifier.exe"
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] ClassifierEngine compilation failed.
+    exit /b %ERRORLEVEL%
+)
+"%SCRIPT_DIR%test_classifier.exe" "%REPO_ROOT%\data\dataset"
+if %ERRORLEVEL% neq 0 (
+    echo [ERROR] ClassifierEngine evaluation failed.
+    exit /b %ERRORLEVEL%
+)
+
+echo.
 echo [ALL HOST TEST SUITES PASSED SUCCESSFULLY]
 exit /b 0

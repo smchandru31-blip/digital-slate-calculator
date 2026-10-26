@@ -3,10 +3,22 @@
 #include <string.h>
 #include <algorithm>
 
+#ifdef ARDUINO
+#include <Arduino.h>
+#else
+#include <chrono>
+static uint32_t hostMicros() {
+    auto now = std::chrono::high_resolution_clock::now();
+    return (uint32_t)std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
+}
+#define micros() hostMicros()
+#endif
+
 namespace DigitalSlate {
 
 ClassifierEngine::ClassifierEngine() 
-    : _threshold(DEFAULT_CONFIDENCE_THRESHOLD) {
+    : _threshold(DEFAULT_CONFIDENCE_THRESHOLD),
+      _margin_threshold(DEFAULT_MARGIN_THRESHOLD) {
     memset(_conv1_out, 0, sizeof(_conv1_out));
     memset(_conv2_out, 0, sizeof(_conv2_out));
     memset(_gap_out, 0, sizeof(_gap_out));
@@ -20,6 +32,26 @@ void ClassifierEngine::setConfidenceThreshold(float threshold) {
 
 float ClassifierEngine::getConfidenceThreshold() const {
     return _threshold;
+}
+
+void ClassifierEngine::setMarginThreshold(float margin) {
+    _margin_threshold = margin;
+}
+
+float ClassifierEngine::getMarginThreshold() const {
+    return _margin_threshold;
+}
+
+bool ClassifierEngine::isKnownConfusionPair(char c1, char c2) {
+    if (c1 > c2) std::swap(c1, c2);
+    // Standard targeted confusion pairs
+    if (c1 == '3' && c2 == '8') return true;
+    if (c1 == '1' && c2 == '7') return true;
+    if (c1 == '0' && c2 == '6') return true;
+    if (c1 == '5' && c2 == '6') return true;
+    if (c1 == '2' && c2 == '7') return true;
+    if (c1 == '4' && c2 == '9') return true;
+    return false;
 }
 
 // --------------------------------------------------------------------------
@@ -105,21 +137,16 @@ void ClassifierEngine::rasterize(const StrokeStore& store, float out_bitmap[SLAT
 // --------------------------------------------------------------------------
 
 void ClassifierEngine::forwardConv1(const float input[28][28]) {
-    // Input: 1 x 28 x 28
-    // Conv1: 8 filters of 1 x 3 x 3 with pad 1 -> 8 x 28 x 28
-    // ReLU + MaxPool 2x2 -> 8 x 14 x 14
     for (int f = 0; f < 8; ++f) {
         float bias = CONV1_BIAS[f];
         for (int out_y = 0; out_y < 14; ++out_y) {
             for (int out_x = 0; out_x < 14; ++out_x) {
-                // MaxPool over 2x2 window: (in_y0, in_y1) x (in_x0, in_x1)
                 float max_val = -1e9f;
                 for (int py = 0; py < 2; ++py) {
                     int in_y = out_y * 2 + py;
                     for (int px = 0; px < 2; ++px) {
                         int in_x = out_x * 2 + px;
 
-                        // Conv 3x3 at (in_y, in_x) with zero-padding
                         float sum = bias;
                         for (int ky = 0; ky < 3; ++ky) {
                             int iy = in_y + ky - 1;
@@ -132,7 +159,6 @@ void ClassifierEngine::forwardConv1(const float input[28][28]) {
                                 }
                             }
                         }
-                        // ReLU
                         if (sum < 0.0f) sum = 0.0f;
                         if (sum > max_val) max_val = sum;
                     }
@@ -144,9 +170,6 @@ void ClassifierEngine::forwardConv1(const float input[28][28]) {
 }
 
 void ClassifierEngine::forwardConv2() {
-    // Input: 8 x 14 x 14 (_conv1_out)
-    // Conv2: 16 filters of 8 x 3 x 3 with pad 1 -> 16 x 14 x 14
-    // ReLU + MaxPool 2x2 -> 16 x 7 x 7
     for (int f = 0; f < 16; ++f) {
         float bias = CONV2_BIAS[f];
         for (int out_y = 0; out_y < 7; ++out_y) {
@@ -171,7 +194,6 @@ void ClassifierEngine::forwardConv2() {
                                 }
                             }
                         }
-                        // ReLU
                         if (sum < 0.0f) sum = 0.0f;
                         if (sum > max_val) max_val = sum;
                     }
@@ -183,13 +205,6 @@ void ClassifierEngine::forwardConv2() {
 }
 
 void ClassifierEngine::forwardGAP() {
-    // Input: 16 x 7 x 7 (_conv2_out)
-    // AdaptiveAvgPool2D((3, 3)): splits 7x7 into 3x3 bins
-    // Bins on 7 coords: [0..2] (size 3), [2..4] (size 3), [4..6] (size 3) or PyTorch adaptive slice
-    // PyTorch bin boundaries for (7 -> 3):
-    // bin 0: [0, 2] (len 3: 0, 1, 2)
-    // bin 1: [2, 5] (len 3: 2, 3, 4)
-    // bin 2: [4, 7] (len 3: 4, 5, 6)
     static const int bin_start[3] = {0, 2, 4};
     static const int bin_end[3]   = {3, 5, 7};
 
@@ -212,8 +227,6 @@ void ClassifierEngine::forwardGAP() {
 }
 
 void ClassifierEngine::forwardFC() {
-    // Input: 144 float (_gap_out)
-    // Weights: 14 x 144 INT8
     for (size_t cl = 0; cl < SLATENET_NUM_CLASSES; ++cl) {
         float sum = FC_BIAS[cl];
         for (int i = 0; i < 144; ++i) {
@@ -242,35 +255,86 @@ void ClassifierEngine::computeSoftmax() {
 }
 
 ClassificationResult ClassifierEngine::classify(const float input_bitmap[SLATENET_INPUT_DIM][SLATENET_INPUT_DIM]) {
+    uint32_t t_start = micros();
+
     forwardConv1(input_bitmap);
     forwardConv2();
     forwardGAP();
     forwardFC();
     computeSoftmax();
 
-    // Find ArgMax
-    size_t best_idx = 0;
-    float max_prob = -1.0f;
+    uint32_t t_inference = micros() - t_start;
+
+    // Identify Top-1 and Top-2 Candidates
+    size_t top1_idx = 0;
+    size_t top2_idx = 0;
+    float max1 = -1.0f;
+    float max2 = -1.0f;
+
     for (size_t c = 0; c < SLATENET_NUM_CLASSES; ++c) {
-        if (_probs[c] > max_prob) {
-            max_prob = _probs[c];
-            best_idx = c;
+        if (_probs[c] > max1) {
+            max2 = max1;
+            top2_idx = top1_idx;
+            max1 = _probs[c];
+            top1_idx = c;
+        } else if (_probs[c] > max2) {
+            max2 = _probs[c];
+            top2_idx = c;
         }
     }
 
     ClassificationResult res;
-    res.label_str    = SLATENET_CLASSES[best_idx];
-    res.label        = SLATENET_CLASSES[best_idx][0];
-    res.class_index  = (uint8_t)best_idx;
-    res.confidence   = max_prob;
-    res.is_confident = (max_prob >= _threshold);
+    res.top1_label       = SLATENET_CLASSES[top1_idx][0];
+    res.top1_str         = SLATENET_CLASSES[top1_idx];
+    res.top1_index       = (uint8_t)top1_idx;
+    res.top1_confidence  = max1;
+
+    res.top2_label       = SLATENET_CLASSES[top2_idx][0];
+    res.top2_str         = SLATENET_CLASSES[top2_idx];
+    res.top2_index       = (uint8_t)top2_idx;
+    res.top2_confidence  = max2;
+
+    res.confidence_margin = max1 - max2;
+    res.is_ambiguous_pair = isKnownConfusionPair(res.top1_label, res.top2_label) && 
+                            (res.confidence_margin < 0.20f);
+
+    // Decision Logic
+    if (max1 < _threshold) {
+        res.status = RecognitionStatus::REJECT_LOW_CONFIDENCE;
+        res.is_confident = false;
+    } else if (res.confidence_margin < _margin_threshold || res.is_ambiguous_pair) {
+        res.status = RecognitionStatus::REJECT_AMBIGUOUS_PAIR;
+        res.is_confident = false;
+    } else {
+        res.status = RecognitionStatus::CONFIDENT;
+        res.is_confident = true;
+    }
+
+    res.rasterize_us = 0;
+    res.inference_us = t_inference;
+    res.total_us     = t_inference;
     return res;
 }
 
 ClassificationResult ClassifierEngine::classifyStrokes(const StrokeStore& store) {
+    if (store.getTotalPointCount() == 0) {
+        ClassificationResult res;
+        memset(&res, 0, sizeof(res));
+        res.top1_label = '?';
+        res.top1_str = "?";
+        res.status = RecognitionStatus::REJECT_EMPTY_INPUT;
+        return res;
+    }
+
+    uint32_t t0 = micros();
     float bitmap[SLATENET_INPUT_DIM][SLATENET_INPUT_DIM];
     rasterize(store, bitmap);
-    return classify(bitmap);
+    uint32_t t_rasterize = micros() - t0;
+
+    ClassificationResult res = classify(bitmap);
+    res.rasterize_us = t_rasterize;
+    res.total_us     = t_rasterize + res.inference_us;
+    return res;
 }
 
 } // namespace DigitalSlate
