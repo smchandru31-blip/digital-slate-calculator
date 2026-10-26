@@ -95,12 +95,56 @@ bool loadExpressionFixture(const std::string& path, ExpressionFixture& fix) {
 }
 
 int main(int argc, char* argv[]) {
+    ClassifierEngine classifier;
+    ExpressionEngine exprEngine;
+
+    if (argc >= 3 && std::string(argv[1]) == "--eval") {
+        std::string json_path = argv[2];
+        ExpressionFixture fix;
+        if (!loadExpressionFixture(json_path, fix)) {
+            std::cout << "{\"status\":\"ERROR\",\"error\":\"Failed to load file\"}\n";
+            return 1;
+        }
+        ExpressionResult res = exprEngine.processStrokes(fix.strokes, classifier);
+
+        std::cout << "{\n";
+        std::cout << "  \"status\": \"" << (res.status == ExpressionStatus::EXPRESSION_RECOGNIZED ? "EXPRESSION_RECOGNIZED" :
+                                          res.status == ExpressionStatus::WAITING_FOR_TRIGGER ? "WAITING_FOR_TRIGGER" :
+                                          res.status == ExpressionStatus::AMBIGUOUS_TRIGGER ? "AMBIGUOUS_TRIGGER" :
+                                          res.status == ExpressionStatus::SYNTAX_ERROR ? "SYNTAX_ERROR" :
+                                          res.status == ExpressionStatus::UNCERTAIN_SYMBOLS ? "UNCERTAIN_SYMBOLS" : "EMPTY_INPUT") << "\",\n";
+        std::cout << "  \"expression\": \"" << res.reconstructed_expr << "\",\n";
+        std::cout << "  \"calc_is_ok\": " << (res.calc_result.isOk() ? "true" : "false") << ",\n";
+        std::cout << "  \"calc_value\": " << res.calc_result.value << ",\n";
+        std::cout << "  \"formatted_answer\": \"" << res.calc_result.formatted << "\",\n";
+        std::cout << "  \"trigger_index\": " << res.trigger_stroke_index << ",\n";
+        std::cout << "  \"uncertain_count\": " << res.uncertain_symbol_count << ",\n";
+        std::cout << "  \"latency_us\": " << res.total_latency_us << ",\n";
+        std::cout << "  \"symbols\": [\n";
+        for (size_t i = 0; i < res.symbols.size(); ++i) {
+            const auto& sym = res.symbols[i];
+            std::cout << "    {\"label\":\"" << sym.label << "\",\"top2\":\"" << sym.top2_label 
+                      << "\",\"conf\":" << sym.confidence << ",\"is_confident\":" << (sym.is_confident ? "true" : "false")
+                      << ",\"xMin\":" << sym.bbox.xMin << ",\"yMin\":" << sym.bbox.yMin 
+                      << ",\"xMax\":" << sym.bbox.xMax << ",\"yMax\":" << sym.bbox.yMax 
+                      << ",\"is_operator\":" << (sym.is_operator ? "true" : "false")
+                      << ",\"strokes\":[";
+            for (size_t s = 0; s < sym.stroke_indices.size(); ++s) {
+                if (s > 0) std::cout << ",";
+                std::cout << sym.stroke_indices[s];
+            }
+            std::cout << "]}";
+            if (i + 1 < res.symbols.size()) std::cout << ",";
+            std::cout << "\n";
+        }
+        std::cout << "  ]\n";
+        std::cout << "}\n";
+        return 0;
+    }
+
     std::cout << "=========================================================================\n";
     std::cout << "  DIGITAL SLATE - HORIZONTAL EXPRESSION RECONSTRUCTION HOST UNIT TESTS  \n";
     std::cout << "=========================================================================\n\n";
-
-    ClassifierEngine classifier;
-    ExpressionEngine exprEngine;
 
     std::vector<std::string> search_dirs;
     if (argc > 1) {
