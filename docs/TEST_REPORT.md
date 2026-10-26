@@ -6,6 +6,7 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | 2026-10-26 | P0 | Architecture & Repo Initialization | Host | PASS | All repo directories and architectural specifications created. |
 | 2026-10-26 | P1 | Hardware Identification & Diagnostics | Physical Board | PASS | Display initialized, 5 target markers validated (TL, TR, BL, BR, C), touch axis calibration verified, zero PSRAM confirmed. |
+| 2026-10-26 | P2 | Canvas Engine & Stroke Store | Physical Board | PASS | Full-screen canvas, immediate 2px ink, pen-down/up segmentation, stroke store (1200 pts / 32 strokes), Undo, Clear, and JSON dump verified over USB-UART. |
 
 ## Hardware Metrics (Measured)
 - SoC: ESP32-D0WD-V3 (rev 3.1, 240 MHz)
