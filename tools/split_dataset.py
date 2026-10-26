@@ -77,7 +77,14 @@ def split_dataset(raw_dir=RAW_DIR, out_base=DATASET_BASE, custom_map=None):
         writers_found.add(w_id)
 
         target_part = writer_map.get(w_id, "train") # Default to train if unassigned
-        dest_folder = out_base / target_part / lbl
+        
+        lbl_clean = lbl
+        if lbl == "+": lbl_clean = "plus"
+        elif lbl == "-": lbl_clean = "minus"
+        elif lbl == "*": lbl_clean = "mul"
+        elif lbl == "/": lbl_clean = "div"
+
+        dest_folder = out_base / target_part / lbl_clean
         dest_folder.mkdir(parents=True, exist_ok=True)
 
         dest_file = dest_folder / fpath.name
